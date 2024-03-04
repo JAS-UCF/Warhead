@@ -12,6 +12,12 @@ typedef struct
   String name;
 } pressure_sensor_t;
 
+
+typedef struct
+{
+} ;
+
+
 typedef struct
 {
   temperature_sensor_t t1;
