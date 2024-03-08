@@ -15,11 +15,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "fifo.h"
-
-const char *ssid = "REPLACE_WITH_YOUR_SSID";
-const char *password = "REPLACE_WITH_YOUR_PASSWORD";
-
-const char *mqtt_server = "YOUR_MQTT_BROKER_IP_ADDRESS";
+#include "config.h"
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -50,13 +46,6 @@ void loop()
     reconnect();
   }
   client.loop();
-
-  long now = millis();
-  if (now - lastMsg > 5000)
-  {
-    lastMsg = now;
-  }
-
   // template of how to publish a message
   client.publish("esp32/status", "ALIVE");
 }
