@@ -10,45 +10,132 @@
  */
 
 #include <Arduino.h>
-#include <BluetoothSerial.h>
 #include <DataTypes.hpp>
-#include <ArduinoJson.h>
+#include <vector>
+#include <WiFi.h>
+#include <PubSubClient.h>
 #include "fifo.h"
 
-BluetoothSerial SerialBT;
-std::vector<queue_item> fifo_queue;
+const char *ssid = "REPLACE_WITH_YOUR_SSID";
+const char *password = "REPLACE_WITH_YOUR_PASSWORD";
+
+const char *mqtt_server = "YOUR_MQTT_BROKER_IP_ADDRESS";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
+long lastMsg = 0;
+char msg[50];
+int value = 0;
+
+// LED Pin
+const int ledPin = 4;
 
 sensor_data_t sens_data;
 void setup()
 {
-  SerialBT.begin("LaunchKey", true);
   Serial.begin(115200);
+  // set up mqtt
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+
+  pinMode(ledPin, OUTPUT);
 }
 
 void loop()
 {
-  String inputText;
-
-  if (SerialBT.available())
+  // esp32 will read in the sensor data, then publish the data to mqtt
+  if (!client.connected())
   {
-    inputText = SerialBT.readStringUntil('~');
-    Serial.println(inputText);
-    if (inputText[0] == '!')
+    reconnect();
+  }
+  client.loop();
+
+  long now = millis();
+  if (now - lastMsg > 5000)
+  {
+    lastMsg = now;
+  }
+
+  // template of how to publish a message
+  client.publish("esp32/status", "ALIVE");
+}
+
+void setup_wifi()
+{
+  delay(10);
+  // We start by connecting to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void callback(char *topic, byte *message, unsigned int length)
+{
+  Serial.print("Message arrived on topic: ");
+  Serial.print(topic);
+  Serial.print(". Message: ");
+  String messageTemp;
+
+  for (int i = 0; i < length; i++)
+  {
+    Serial.print((char)message[i]);
+    messageTemp += (char)message[i];
+  }
+  Serial.println();
+
+  // Feel free to add more if statements to control more GPIOs with MQTT
+
+  // If a message is received on the topic esp32/output, you check if the message is either "on" or "off".
+  // Changes the output state according to the message
+  if (String(topic) == "esp32/output")
+  {
+    Serial.print("Changing output to ");
+    if (messageTemp == "on")
     {
-      // if the message contains the proper starting keyLeter, then we will begin computing shit
-      // begin the if else chain from this point forward
-      if (strcmp(inputText, "!START~"))
-      {
-        // this command means we need to start the motor, so any applications or function required to start the motor can be placed here
-      }
-      else if (strcmp(inputText, "!STOP~"))
-      {
-        // This command signals that we need to turn off everything asap, any functionality for controling such things should go here
-      }
-      // the message might consist of the callsigns for changing the thrust, write that here
+      Serial.println("on");
+      digitalWrite(ledPin, HIGH);
+    }
+    else if (messageTemp == "off")
+    {
+      Serial.println("off");
+      digitalWrite(ledPin, LOW);
     }
   }
 }
-
-// The game plan from here is to read in sensor infomation as soon as we can, then, parse it into a message to send into the BT queue, then send the message over to the client on the other end
-// Messages recieved in the loop() function can be read in, and will have to be computed
+void reconnect()
+{
+  // Loop until we're reconnected
+  while (!client.connected())
+  {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("ESP8266Client"))
+    {
+      Serial.println("connected");
+      // Subscribe
+      client.subscribe("esp32/output");
+    }
+    else
+    {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
