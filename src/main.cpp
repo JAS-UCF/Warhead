@@ -1,21 +1,23 @@
 /**
  * @file main.cpp
  * @author Peter Cross (peter.cross222@gmail.com)
- * @brief Main file to compute the launch key code, this will allow us to read in BT information, and handle sending information off to the nuclear football
- * @version 0.1
+ * @brief Main file to compute the launch key code, this will allow us to read in MQTT information, and handle sending information off to the nuclear football
+ * @version 0.2
  * @date 2024-03-04
  *
  * @copyright Copyright (c) 2024
  *
  */
 
-#include <Arduino.h>
+#include "main.hpp"
 #include <DataTypes.hpp>
 #include <vector>
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include "fifo.h"
 #include "config.h"
+#include <ArduinoJson.h>
+
+JsonDocument doc;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -40,6 +42,8 @@ void setup()
 
 void loop()
 {
+  doc.clear();
+
   // esp32 will read in the sensor data, then publish the data to mqtt
   if (!client.connected())
   {
@@ -48,6 +52,19 @@ void loop()
   client.loop();
   // template of how to publish a message
   client.publish("esp32/status", "ALIVE");
+
+  // read sensor data here
+  /*
+  Example :
+  doc["sensor1"] = sensor1_value;
+  doc["sensor2"] = sensor2_value;
+  doc["sensor3"] = sensor3_value;
+  doc["sensor4"] = sensor4_value;
+  */
+
+  String mqtt_message_temp;
+  serializeJson(doc, mqtt_message_temp);
+  client.publish("esp32/sensor_data", mqtt_message_temp.c_str());
 }
 
 void setup_wifi()
