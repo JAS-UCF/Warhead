@@ -21,9 +21,6 @@ JsonDocument doc;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
-long lastMsg = 0;
-char msg[50];
-int value = 0;
 
 // LED Pin
 const int ledPin = 4;
@@ -50,8 +47,6 @@ void loop()
     reconnect();
   }
   client.loop();
-  // template of how to publish a message
-  client.publish("esp32/status", "ALIVE");
 
   // read sensor data here
   /*
@@ -89,7 +84,7 @@ void setup_wifi()
   Serial.println(WiFi.localIP());
 }
 
-void callback(char *topic, byte *message, unsigned int length)
+void callback(const char *topic, const byte *message, const unsigned int length)
 {
   Serial.print("Message arrived on topic: ");
   Serial.print(topic);
