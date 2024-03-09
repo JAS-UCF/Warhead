@@ -129,7 +129,7 @@ void reconnect()
   {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP8266Client"))
+    if (client.connect("Launch Key"))
     {
       Serial.println("connected");
       // Subscribe
