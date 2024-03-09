@@ -2,7 +2,7 @@
  * @file main.cpp
  * @author Peter Cross (peter.cross222@gmail.com)
  * @brief Main file to compute the launch key code, this will allow us to read in MQTT information, and handle sending information off to the nuclear football
- * @version 0.2
+ * @version 0.3
  * @date 2024-03-04
  *
  * @copyright Copyright (c) 2024
