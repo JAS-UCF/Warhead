@@ -16,6 +16,7 @@
 #include <PubSubClient.h>
 #include "config.h"
 #include <ArduinoJson.h>
+#include "max6675.h"
 
 JsonDocument doc;
 
@@ -24,6 +25,10 @@ PubSubClient client(espClient);
 
 // LED Pin
 const int ledPin = 4;
+/*
+Essentially, if we want to read from several different spi devices (MAX6675) we need to bridge miso mosi, vin & gnd, the only thing we do that is new and different, is that we need a dedicated pin for CS (Chip select) we can set this to any pin, but need to set it high whenever we want to read from that device
+*/
+// MAX6675 Thermocouple1();
 
 sensor_data_t sens_data;
 void setup()
