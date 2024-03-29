@@ -1,6 +1,6 @@
-# LaunchKey
+# Warhead
 
-esp32 code to handle communicating with the nuclear football
+ESP32 code to handle communicating with the nuclear football
 
 ## Game Plan
 
