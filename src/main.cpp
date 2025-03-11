@@ -18,7 +18,7 @@
 #include <ArduinoJson.h>
 #include "max6675.h"
 #include <Adafruit_AHTX0.h>
-
+#include "HX711.h"
 JsonDocument doc;
 
 WiFiClient espClient;
@@ -36,6 +36,7 @@ MAX6675 Thermocouple3(GPIO_NUM_14,GPIO_NUM_25,GPIO_NUM_12);
 MAX6675 Thermocouple4(GPIO_NUM_14,GPIO_NUM_32,GPIO_NUM_12);
 // ambient temperature and humidity
 Adafruit_AHTX0 aht;
+HX711 scale;
 
 sensor_data_t sens_data;
 void setup()
@@ -51,6 +52,13 @@ void setup()
 
   // pinMode(ledPin, OUTPUT);
 }
+// TODO build out the arduinoJSON messages to send
+// TODO experiment with connecting to wifi, and see whats up
+// TODO experiment with the 12v relay rails
+// TODO check the water/oil pressure sensors
+// TODO check the water/oil temperature sensors
+// TODO experiment with MQTT, and maybe using one hosted on the internet
+// TODO build out proper enumeration of data, and pushing it to the JSON string
 
 void loop()
 {
@@ -60,6 +68,70 @@ void loop()
   aht.getEvent(&humidity, &temp);
   Serial.printf("t:%5f,h:%5f\n",temp.temperature,humidity.relative_humidity);
   delay(500);
+
+  // Completely disable I2C and reset pins
+  Wire.end();
+  Serial.println("End Wire");
+  
+  // Force pin reset - set to INPUT with pullups disabled
+  pinMode(SDA, INPUT);
+  digitalWrite(SDA, LOW);  // Disable internal pullup
+  pinMode(SCL, INPUT);
+  digitalWrite(SCL, LOW);  // Disable internal pullup
+  delay(50);  // Give pins time to stabilize
+  
+  // Configure for HX711 with explicit pin mode changes
+  pinMode(SDA, INPUT);     // Data pin for HX711
+  pinMode(SCL, OUTPUT);    // Clock pin for HX711
+  delay(50);
+  
+  // Initialize the HX711 with the repurposed pins
+  scale.begin(SDA, SCL);
+  Serial.println("Scale initialized");
+  
+  // Add both a timeout and a retry mechanism
+  int retries = 3;
+  bool scale_ready = false;
+  
+  while (retries > 0 && !scale_ready) {
+    unsigned long startTime = millis();
+    
+    while (!scale.is_ready() && (millis() - startTime < 1000)) {
+      delay(300);
+      Serial.printf("Waiting on scale... Retry: %d\n", 4-retries);
+    }
+    
+    if (scale.is_ready()) {
+      scale_ready = true;
+      break;
+    }
+    
+    retries--;
+    // Reset the HX711 connection between retries
+    pinMode(SCL, OUTPUT);
+    digitalWrite(SCL, HIGH);
+    delay(100);
+    digitalWrite(SCL, LOW);
+    delay(100);
+  }
+  
+  if (scale_ready) {
+    // Read from the scale
+    long reading = scale.read();
+    Serial.printf("Scale: %ld\n", reading);
+  } else {
+    Serial.println("Failed to get scale ready after multiple attempts");
+  }
+  
+  // Reset pins before re-enabling I2C
+  pinMode(SDA, INPUT);
+  digitalWrite(SDA, HIGH);  // Restore pullup if needed for I2C
+  pinMode(SCL, INPUT);
+  digitalWrite(SCL, HIGH);  // Restore pullup if needed for I2C
+  delay(50);
+  
+  // Re-enable I2C
+  Wire.begin();
 
   // // esp32 will read in the sensor data, then publish the data to mqtt
   // if (!client.connected())
