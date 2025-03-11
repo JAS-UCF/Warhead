@@ -19,6 +19,8 @@
 #include "max6675.h"
 #include <Adafruit_AHTX0.h>
 #include "HX711.h"
+#include <ESP32Servo.h>
+
 JsonDocument doc;
 
 WiFiClient espClient;
@@ -34,17 +36,27 @@ MAX6675 Thermocouple1(GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_12);
 MAX6675 Thermocouple2(GPIO_NUM_14,GPIO_NUM_26,GPIO_NUM_12);
 MAX6675 Thermocouple3(GPIO_NUM_14,GPIO_NUM_25,GPIO_NUM_12);
 MAX6675 Thermocouple4(GPIO_NUM_14,GPIO_NUM_32,GPIO_NUM_12);
-// ambient temperature and humidity
+
+// sensors
 Adafruit_AHTX0 aht;
 HX711 scale;
+// servo
+Servo fuelServo;
+#define SERVO_MINu 1000
+#define SERVO_MAXu 2000
 
 sensor_data_t sens_data;
 void setup()
 {
   Serial.begin(115200);
   delay(2000);
+  ESP32PWM::allocateTimer(0);
+	ESP32PWM::allocateTimer(1);
+	ESP32PWM::allocateTimer(2);
+	ESP32PWM::allocateTimer(3);
   // once serial is available
   aht.begin();
+  fuelServo.setPeriodHertz(50);      // Standard 50hz servo
   // // set up mqtt
   // setup_wifi();
   // client.setServer(mqtt_server, 1883);
@@ -59,7 +71,10 @@ void setup()
 // TODO check the water/oil temperature sensors
 // TODO experiment with MQTT, and maybe using one hosted on the internet
 // TODO build out proper enumeration of data, and pushing it to the JSON string
+// TODO work in some code to work with servos
 
+// TODO work in subscriber for MQTT for enabling and disabling relay lines
+// TODO work in some options, potentially for tuning scenarios or something idk
 void loop()
 {
 
