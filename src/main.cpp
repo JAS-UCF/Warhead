@@ -46,6 +46,7 @@ Servo fuelServo;
 #define SERVO_MAXu 2000
 
 sensor_data_t sens_data;
+long scaleCalibration = 0;
 void setup()
 {
   Serial.begin(115200);
@@ -61,6 +62,14 @@ void setup()
   // setup_wifi();
   // client.setServer(mqtt_server, 1883);
   // client.setCallback(callback);
+  // long calibrationSum = 0;
+  // for (int i = 0; i < 10; i++)
+  // {
+  //   delay(250);
+  //   Serial.printf("Taking Reading %d/10\n",i);
+  //   calibrationSum += scale.read_average(2);
+  // }
+  // scaleCalibration = calibrationSum / 10;
 
   // pinMode(ledPin, OUTPUT);
 }
@@ -81,12 +90,11 @@ void loop()
   // in this function, we should prepare all the data necessary, then prepare to send it to the mqtt server
   sensors_event_t humidity, temp;
   aht.getEvent(&humidity, &temp);
-  Serial.printf("t:%5f,h:%5f\n",temp.temperature,humidity.relative_humidity);
+  Serial.printf("temperature C:%5f, humidity:%5f\n",temp.temperature,humidity.relative_humidity);
   delay(500);
 
   // Completely disable I2C and reset pins
   Wire.end();
-  Serial.println("End Wire");
   
   // Force pin reset - set to INPUT with pullups disabled
   pinMode(SDA, INPUT);
@@ -102,7 +110,6 @@ void loop()
   
   // Initialize the HX711 with the repurposed pins
   scale.begin(SDA, SCL);
-  Serial.println("Scale initialized");
   
   // Add both a timeout and a retry mechanism
   int retries = 3;
@@ -113,7 +120,7 @@ void loop()
     
     while (!scale.is_ready() && (millis() - startTime < 1000)) {
       delay(300);
-      Serial.printf("Waiting on scale... Retry: %d\n", 4-retries);
+      // Serial.printf("Waiting on scale... Retry: %d\n", 4-retries);
     }
     
     if (scale.is_ready()) {
@@ -133,7 +140,7 @@ void loop()
   if (scale_ready) {
     // Read from the scale
     long reading = scale.read();
-    Serial.printf("Scale: %ld\n", reading);
+    Serial.printf("Scale: %ld\n", reading - scaleCalibration);
   } else {
     Serial.println("Failed to get scale ready after multiple attempts");
   }
