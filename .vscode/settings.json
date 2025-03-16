@@ -1,5 +1,8 @@
 {
   "files.associations": {
+    "*.quasar_profile": "json",
+    "*.qp": "json",
+    "*.qds": "json",
     "array": "cpp",
     "deque": "cpp",
     "string": "cpp",
@@ -7,7 +10,8 @@
     "unordered_set": "cpp",
     "vector": "cpp",
     "string_view": "cpp",
-    "initializer_list": "cpp"
+    "initializer_list": "cpp",
+    "*.tcc": "cpp"
   },
   "sonarlint.pathToCompileCommands": "${workspaceFolder}\\compile_commands.json"
 }

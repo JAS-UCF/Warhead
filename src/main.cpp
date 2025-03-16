@@ -12,6 +12,8 @@
 #include "main.hpp"
 #include <DataTypes.hpp>
 #include <vector>
+#include "RelayDrive.h"
+#include "PressureTransducer.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "config.h"
@@ -32,10 +34,19 @@ const int ledPin = 4;
 Essentially, if we want to read from several different spi devices (MAX6675) we need to bridge miso mosi, vin & gnd, the only thing we do that is new and different, is that we need a dedicated pin for CS (Chip select) we can set this to any pin, but need to set it high whenever we want to read from that device
 */
 // first things first, we need to add thr 4 thermocouples, and get them working
-MAX6675 Thermocouple1(GPIO_NUM_14,GPIO_NUM_27,GPIO_NUM_12);
-MAX6675 Thermocouple2(GPIO_NUM_14,GPIO_NUM_26,GPIO_NUM_12);
-MAX6675 Thermocouple3(GPIO_NUM_14,GPIO_NUM_25,GPIO_NUM_12);
-MAX6675 Thermocouple4(GPIO_NUM_14,GPIO_NUM_32,GPIO_NUM_12);
+MAX6675 Thermocouple1(GPIO_NUM_14, GPIO_NUM_27, GPIO_NUM_12);
+MAX6675 Thermocouple2(GPIO_NUM_14, GPIO_NUM_26, GPIO_NUM_12);
+MAX6675 Thermocouple3(GPIO_NUM_14, GPIO_NUM_25, GPIO_NUM_12);
+MAX6675 Thermocouple4(GPIO_NUM_14, GPIO_NUM_32, GPIO_NUM_12);
+
+// add the 3 relay drives0p
+RelayDrive r1(GPIO_NUM_19);
+RelayDrive r2(GPIO_NUM_18);
+RelayDrive r3(GPIO_NUM_5);
+
+// add the 2 pressure transducers
+PressureTransducer *waterPressure;
+PressureTransducer *oilPressure;
 
 // sensors
 Adafruit_AHTX0 aht;
@@ -44,20 +55,37 @@ HX711 scale;
 Servo fuelServo;
 #define SERVO_MINu 1000
 #define SERVO_MAXu 2000
+#define SERVO_PIN GPIO_NUM_33
 
 sensor_data_t sens_data;
 long scaleCalibration = 0;
+
+// Pin definitions
+const int THERMISTOR_PIN = 15; // D4 on ESP32
+
+// Thermistor parameters
+const float REFERENCE_RESISTANCE = 10000.0; // 10K pull-up resistor (R7)
+const float NOMINAL_RESISTANCE = 100000.0;  // 100K thermistor at 25°C
+const float NOMINAL_TEMPERATURE = 25.0;     // Reference temperature
+const float BETA_COEFFICIENT = 3950.0;      // Beta coefficient
+
+// Voltage divider parameter
+const float DIVIDER_RESISTANCE = 20000.0; // 20K resistor to GND (R9)
+
 void setup()
 {
   Serial.begin(115200);
   delay(2000);
-  ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
+  analogReadResolution(12);
+  analogSetPinAttenuation(THERMISTOR_PIN, ADC_11db); // For full range
+  pinMode(THERMISTOR_PIN, INPUT);
+  pinMode(THERMISTOR_PIN, INPUT);
+  // ESP32PWM::allocateTimer(0);
+  // ESP32PWM::allocateTimer(1);
+  // ESP32PWM::allocateTimer(2);
+  // ESP32PWM::allocateTimer(3);
   // once serial is available
   aht.begin();
-  fuelServo.setPeriodHertz(50);      // Standard 50hz servo
   // // set up mqtt
   // setup_wifi();
   // client.setServer(mqtt_server, 1883);
@@ -72,6 +100,20 @@ void setup()
   // scaleCalibration = calibrationSum / 10;
 
   // pinMode(ledPin, OUTPUT);
+  // EXAMPLE SERVO DRIVE
+  // fuelServo.attach(SERVO_PIN);
+  // while (true)
+  // {
+  //   delay(3000);
+  //   fuelServo.write(100);
+  //   delay(3000);
+  //   fuelServo.write(0);
+  // }
+  // r1.enable();
+
+  // setup wtr and oil Pressure
+  waterPressure = new PressureTransducer(GPIO_NUM_35, WTR_CAL);
+  oilPressure = new PressureTransducer(GPIO_NUM_34, OIL_CAL);
 }
 // TODO build out the arduinoJSON messages to send
 // TODO experiment with connecting to wifi, and see whats up
@@ -86,74 +128,132 @@ void setup()
 // TODO work in some options, potentially for tuning scenarios or something idk
 void loop()
 {
+  // Read analog value
+  int adcValue = analogRead(THERMISTOR_PIN);
+
+  // Convert ADC value to voltage at the ESP32 pin
+  float measuredVoltage = adcValue * (3.3 / 4095.0); // ESP32 has 12-bit ADC
+
+  // Calculate actual voltage at the junction before the voltage divider
+  // V_original = V_measured * (R_divider + R_parallel) / R_parallel
+  float originalVoltage = measuredVoltage * (DIVIDER_RESISTANCE) / (DIVIDER_RESISTANCE);
+
+  // Calculate the effective resistance of the thermistor and voltage divider combination
+  float voltage_ratio = originalVoltage / 5.0;
+  float effective_resistance = REFERENCE_RESISTANCE * (1.0 / voltage_ratio - 1.0);
+
+  // Adjust for the effect of the parallel resistor
+  // 1/R_thermistor = 1/R_effective - 1/R_divider
+  float thermistor_resistance;
+  if (effective_resistance >= DIVIDER_RESISTANCE)
+  {
+    thermistor_resistance = (effective_resistance * DIVIDER_RESISTANCE) / (DIVIDER_RESISTANCE - effective_resistance);
+  }
+  else
+  {
+    // If effective resistance is lower than divider resistance, the calculation would be negative
+    thermistor_resistance = 999999.9; // Indicate an error or very high resistance
+  }
+
+  // Calculate temperature using the Beta parameter equation
+  float temperature = 1.0 / (1.0 / (NOMINAL_TEMPERATURE + 273.15) +
+                             (1.0 / BETA_COEFFICIENT) * log(thermistor_resistance / NOMINAL_RESISTANCE)) -
+                      273.15;
+
+  // Print results
+  Serial.print("ADC: ");
+  Serial.print(adcValue);
+  Serial.print(" | Voltage: ");
+  Serial.print(measuredVoltage, 2);
+  Serial.print("V | Original V: ");
+  Serial.print(originalVoltage, 2);
+  Serial.print("V | Effective R: ");
+  Serial.print(effective_resistance);
+  Serial.print("Ω | Thermistor R: ");
+  Serial.print(thermistor_resistance);
+  Serial.print("Ω | Temp: ");
+  Serial.print(temperature, 5);
+  Serial.println("°C");
+
+  delay(1000);
+  // Serial.printf("Water Pressure: %f | Oil Pressure: %f \n", waterPressure.getReading(), oilPressure.getReading());
+  // Serial.printf("pWater: %f | pOIL: %f \n", waterPressure->getReading(), oilPressure->getReading());
+  // delay(500);
+  // for (int posDegrees = 0; posDegrees <= 270; posDegrees++)
+  // {
+  //   fuelServo.write(posDegrees);
+  //   Serial.println(posDegrees);
+  //   delay(100);
+  // }
+  // test servo power drive
 
   // in this function, we should prepare all the data necessary, then prepare to send it to the mqtt server
-  sensors_event_t humidity, temp;
-  aht.getEvent(&humidity, &temp);
-  Serial.printf("temperature C:%5f, humidity:%5f\n",temp.temperature,humidity.relative_humidity);
-  delay(500);
+  // sensors_event_t humidity, temp;
+  // aht.getEvent(&humidity, &temp);
+  // Serial.printf("temperature C:%5f, humidity:%5f\n",temp.temperature,humidity.relative_humidity);
+  // delay(500);
 
-  // Completely disable I2C and reset pins
-  Wire.end();
-  
-  // Force pin reset - set to INPUT with pullups disabled
-  pinMode(SDA, INPUT);
-  digitalWrite(SDA, LOW);  // Disable internal pullup
-  pinMode(SCL, INPUT);
-  digitalWrite(SCL, LOW);  // Disable internal pullup
-  delay(50);  // Give pins time to stabilize
-  
-  // Configure for HX711 with explicit pin mode changes
-  pinMode(SDA, INPUT);     // Data pin for HX711
-  pinMode(SCL, OUTPUT);    // Clock pin for HX711
-  delay(50);
-  
-  // Initialize the HX711 with the repurposed pins
-  scale.begin(SDA, SCL);
-  
-  // Add both a timeout and a retry mechanism
-  int retries = 3;
-  bool scale_ready = false;
-  
-  while (retries > 0 && !scale_ready) {
-    unsigned long startTime = millis();
-    
-    while (!scale.is_ready() && (millis() - startTime < 1000)) {
-      delay(300);
-      // Serial.printf("Waiting on scale... Retry: %d\n", 4-retries);
-    }
-    
-    if (scale.is_ready()) {
-      scale_ready = true;
-      break;
-    }
-    
-    retries--;
-    // Reset the HX711 connection between retries
-    pinMode(SCL, OUTPUT);
-    digitalWrite(SCL, HIGH);
-    delay(100);
-    digitalWrite(SCL, LOW);
-    delay(100);
-  }
-  
-  if (scale_ready) {
-    // Read from the scale
-    long reading = scale.read();
-    Serial.printf("Scale: %ld\n", reading - scaleCalibration);
-  } else {
-    Serial.println("Failed to get scale ready after multiple attempts");
-  }
-  
-  // Reset pins before re-enabling I2C
-  pinMode(SDA, INPUT);
-  digitalWrite(SDA, HIGH);  // Restore pullup if needed for I2C
-  pinMode(SCL, INPUT);
-  digitalWrite(SCL, HIGH);  // Restore pullup if needed for I2C
-  delay(50);
-  
-  // Re-enable I2C
-  Wire.begin();
+  // // Completely disable I2C and reset pins
+  // Wire.end();
+
+  // // Force pin reset - set to INPUT with pullups disabled
+  // pinMode(SDA, INPUT);
+  // digitalWrite(SDA, LOW);  // Disable internal pullup
+  // pinMode(SCL, INPUT);
+  // digitalWrite(SCL, LOW);  // Disable internal pullup
+  // delay(50);  // Give pins time to stabilize
+
+  // // Configure for HX711 with explicit pin mode changes
+  // pinMode(SDA, INPUT);     // Data pin for HX711
+  // pinMode(SCL, OUTPUT);    // Clock pin for HX711
+  // delay(50);
+
+  // // Initialize the HX711 with the repurposed pins
+  // scale.begin(SDA, SCL);
+
+  // // Add both a timeout and a retry mechanism
+  // int retries = 3;
+  // bool scale_ready = false;
+
+  // while (retries > 0 && !scale_ready) {
+  //   unsigned long startTime = millis();
+
+  //   while (!scale.is_ready() && (millis() - startTime < 1000)) {
+  //     delay(300);
+  //     // Serial.printf("Waiting on scale... Retry: %d\n", 4-retries);
+  //   }
+
+  //   if (scale.is_ready()) {
+  //     scale_ready = true;
+  //     break;
+  //   }
+
+  //   retries--;
+  //   // Reset the HX711 connection between retries
+  //   pinMode(SCL, OUTPUT);
+  //   digitalWrite(SCL, HIGH);
+  //   delay(100);
+  //   digitalWrite(SCL, LOW);
+  //   delay(100);
+  // }
+
+  // if (scale_ready) {
+  //   // Read from the scale
+  //   long reading = scale.read();
+  //   Serial.printf("Scale: %ld\n", reading - scaleCalibration);
+  // } else {
+  //   Serial.println("Failed to get scale ready after multiple attempts");
+  // }
+
+  // // Reset pins before re-enabling I2C
+  // pinMode(SDA, INPUT);
+  // digitalWrite(SDA, HIGH);  // Restore pullup if needed for I2C
+  // pinMode(SCL, INPUT);
+  // digitalWrite(SCL, HIGH);  // Restore pullup if needed for I2C
+  // delay(50);
+
+  // // Re-enable I2C
+  // Wire.begin();
 
   // // esp32 will read in the sensor data, then publish the data to mqtt
   // if (!client.connected())
@@ -177,7 +277,6 @@ void loop()
   // thermocouples["tc3"] = Thermocouple3.readCelsius();
   // thermocouples["tc4"] = Thermocouple4.readCelsius();
 
-
   // get ambient air stuff
   // sensors_event_t humidity, temp;
   // aht.getEvent(&humidity, &temp);
@@ -187,17 +286,17 @@ void loop()
   // ambient["temp"] = temp.temperature;
   // ambient["humd"] = humidity.relative_humidity;
 
-// // template for water stats
-//   JsonObject water = doc.createNestedObject("Water");
-//   // Convert analog readings to appropriate units (adjust conversion as needed)
-//   water["pressure"] = analogReadToWaterPressure(analogRead(waterPressurePin));
-//   water["temperatureC"] = analogReadToWaterTemp(analogRead(waterTempPin));
-// // emplate for oil stats
-//   JsonObject oil = doc.createNestedObject("Oil");
-//   oil["pressure"] = analogReadToOilPressure(analogRead(oilPressurePin));
-//   oil["temperature"] = analogReadToOilTemp(analogRead(oilTempPin));
+  // // template for water stats
+  //   JsonObject water = doc.createNestedObject("Water");
+  //   // Convert analog readings to appropriate units (adjust conversion as needed)
+  //   water["pressure"] = analogReadToWaterPressure(analogRead(waterPressurePin));
+  //   water["temperatureC"] = analogReadToWaterTemp(analogRead(waterTempPin));
+  // // emplate for oil stats
+  //   JsonObject oil = doc.createNestedObject("Oil");
+  //   oil["pressure"] = analogReadToOilPressure(analogRead(oilPressurePin));
+  //   oil["temperature"] = analogReadToOilTemp(analogRead(oilTempPin));
 
-// template for force stats
+  // template for force stats
   // doc["force"] = analogReadToForce(analogRead(forceRegulationPin));
 
   // String mqtt_message_temp;
