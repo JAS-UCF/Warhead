@@ -17,6 +17,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include "config.h"
+#include <Thermistor.h>
+#include <NTC_Thermistor.h>
 #include <ArduinoJson.h>
 #include "max6675.h"
 #include <Adafruit_AHTX0.h>
@@ -63,23 +65,26 @@ long scaleCalibration = 0;
 // Pin definitions
 const int THERMISTOR_PIN = 15; // D4 on ESP32
 
-// Thermistor parameters
-const float REFERENCE_RESISTANCE = 10000.0; // 10K pull-up resistor (R7)
-const float NOMINAL_RESISTANCE = 100000.0;  // 100K thermistor at 25°C
-const float NOMINAL_TEMPERATURE = 25.0;     // Reference temperature
-const float BETA_COEFFICIENT = 3950.0;      // Beta coefficient
+#define REFERENCE_RESISTANCE 4800 // 10k + (10k || 10k thermistor)
+#define NOMINAL_RESISTANCE 10000
+#define NOMINAL_TEMPERATURE 25
+#define B_VALUE 3950
+#define ESP32_ANALOG_RESOLUTION 4095
+#define ESP32_ADC_VREF_MV 3300
 
-// Voltage divider parameter
-const float DIVIDER_RESISTANCE = 20000.0; // 20K resistor to GND (R9)
-
+Thermistor *thermistor;
 void setup()
 {
   Serial.begin(115200);
   delay(2000);
-  analogReadResolution(12);
-  analogSetPinAttenuation(THERMISTOR_PIN, ADC_11db); // For full range
-  pinMode(THERMISTOR_PIN, INPUT);
-  pinMode(THERMISTOR_PIN, INPUT);
+  thermistor = new NTC_Thermistor_ESP32(
+      THERMISTOR_PIN,
+      REFERENCE_RESISTANCE,
+      NOMINAL_RESISTANCE,
+      NOMINAL_TEMPERATURE,
+      B_VALUE,
+      ESP32_ADC_VREF_MV,
+      ESP32_ANALOG_RESOLUTION);
   // ESP32PWM::allocateTimer(0);
   // ESP32PWM::allocateTimer(1);
   // ESP32PWM::allocateTimer(2);
@@ -128,53 +133,18 @@ void setup()
 // TODO work in some options, potentially for tuning scenarios or something idk
 void loop()
 {
-  // Read analog value
-  int adcValue = analogRead(THERMISTOR_PIN);
+  const double celsius = thermistor->readCelsius();
+  const double kelvin = thermistor->readKelvin();
+  const double fahrenheit = thermistor->readFahrenheit();
 
-  // Convert ADC value to voltage at the ESP32 pin
-  float measuredVoltage = adcValue * (3.3 / 4095.0); // ESP32 has 12-bit ADC
-
-  // Calculate actual voltage at the junction before the voltage divider
-  // V_original = V_measured * (R_divider + R_parallel) / R_parallel
-  float originalVoltage = measuredVoltage * (DIVIDER_RESISTANCE) / (DIVIDER_RESISTANCE);
-
-  // Calculate the effective resistance of the thermistor and voltage divider combination
-  float voltage_ratio = originalVoltage / 5.0;
-  float effective_resistance = REFERENCE_RESISTANCE * (1.0 / voltage_ratio - 1.0);
-
-  // Adjust for the effect of the parallel resistor
-  // 1/R_thermistor = 1/R_effective - 1/R_divider
-  float thermistor_resistance;
-  if (effective_resistance >= DIVIDER_RESISTANCE)
-  {
-    thermistor_resistance = (effective_resistance * DIVIDER_RESISTANCE) / (DIVIDER_RESISTANCE - effective_resistance);
-  }
-  else
-  {
-    // If effective resistance is lower than divider resistance, the calculation would be negative
-    thermistor_resistance = 999999.9; // Indicate an error or very high resistance
-  }
-
-  // Calculate temperature using the Beta parameter equation
-  float temperature = 1.0 / (1.0 / (NOMINAL_TEMPERATURE + 273.15) +
-                             (1.0 / BETA_COEFFICIENT) * log(thermistor_resistance / NOMINAL_RESISTANCE)) -
-                      273.15;
-
-  // Print results
-  Serial.print("ADC: ");
-  Serial.print(adcValue);
-  Serial.print(" | Voltage: ");
-  Serial.print(measuredVoltage, 2);
-  Serial.print("V | Original V: ");
-  Serial.print(originalVoltage, 2);
-  Serial.print("V | Effective R: ");
-  Serial.print(effective_resistance);
-  Serial.print("Ω | Thermistor R: ");
-  Serial.print(thermistor_resistance);
-  Serial.print("Ω | Temp: ");
-  Serial.print(temperature, 5);
-  Serial.println("°C");
-
+  // Output of information
+  Serial.print("Temperature: ");
+  Serial.print(celsius);
+  Serial.print(" C, ");
+  Serial.print(kelvin);
+  Serial.print(" K, ");
+  Serial.print(fahrenheit);
+  Serial.println(" F");
   delay(1000);
   // Serial.printf("Water Pressure: %f | Oil Pressure: %f \n", waterPressure.getReading(), oilPressure.getReading());
   // Serial.printf("pWater: %f | pOIL: %f \n", waterPressure->getReading(), oilPressure->getReading());
