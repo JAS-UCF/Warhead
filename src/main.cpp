@@ -113,9 +113,8 @@ void setup()
   // }
   // scaleCalibration = calibrationSum / 10;
 
-  // pinMode(ledPin, OUTPUT);
   // EXAMPLE SERVO DRIVE
-  // fuelServo.attach(SERVO_PIN);
+  fuelServo.attach(SERVO_PIN);
   // while (true)
   // {
   //   delay(3000);
@@ -143,20 +142,20 @@ void setup()
 bool state;
 void loop()
 {
-  r3.enable();
-  Serial.println("ENABLE");
-  delay(1000);
-  r3.disable();
-  Serial.println("DISABLE");
-  delay(1000);
+  // r3.enable();
+  // Serial.println("ENABLE");
+  // delay(1000);
+  // r3.disable();
+  // Serial.println("DISABLE");
+  // delay(1000);
 
   // Serial.printf("Water Pressure: %f | Oil Pressure: %f \n", waterPressure.getReading(), oilPressure.getReading());
   // delay(500);
-  // for (int posDegrees = 0; posDegrees <= 270; posDegrees++)
+  // for (int posDegrees = 0; posDegrees <= 180; posDegrees++)
   // {
   //   fuelServo.write(posDegrees);
   //   Serial.println(posDegrees);
-  //   delay(100);
+  //   delay(60);
   // }
   // test servo power drive
 
