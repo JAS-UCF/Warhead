@@ -40,9 +40,10 @@ MAX6675 Thermocouple3(GPIO_NUM_14, GPIO_NUM_25, GPIO_NUM_12);
 MAX6675 Thermocouple4(GPIO_NUM_14, GPIO_NUM_32, GPIO_NUM_12);
 
 // add the 3 relay drives0p
-RelayDrive r1(GPIO_NUM_5);
-RelayDrive r2(GPIO_NUM_19);
-RelayDrive r3(GPIO_NUM_18);
+// these pins will be updated in rev2
+RelayDrive r1(GPIO_NUM_18);
+RelayDrive r2(GPIO_NUM_5);
+RelayDrive r3(GPIO_NUM_19);
 
 // add the 2 pressure transducers
 PressureTransducer *waterPressure;
@@ -142,10 +143,10 @@ void setup()
 bool state;
 void loop()
 {
-  r1.enable();
+  r3.enable();
   Serial.println("ENABLE");
   delay(1000);
-  r1.disable();
+  r3.disable();
   Serial.println("DISABLE");
   delay(1000);
 
