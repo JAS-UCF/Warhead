@@ -30,8 +30,6 @@ JsonDocument doc;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// LED Pin
-const int ledPin = 4;
 /*
 Essentially, if we want to read from several different spi devices (MAX6675) we need to bridge miso mosi, vin & gnd, the only thing we do that is new and different, is that we need a dedicated pin for CS (Chip select) we can set this to any pin, but need to set it high whenever we want to read from that device
 */
@@ -55,40 +53,50 @@ Adafruit_AHTX0 aht;
 HX711 scale;
 // servo
 Servo fuelServo;
-#define SERVO_MINu 1000
-#define SERVO_MAXu 2000
-#define SERVO_PIN GPIO_NUM_33
+constexpr uint SERVO_MINu = 1000;
+constexpr uint SERVO_MAXu = 2000;
+constexpr gpio_num_t SERVO_PIN = GPIO_NUM_33;
 
 sensor_data_t sens_data;
 long scaleCalibration = 0;
 
 // Pin definitions
-const int THERMISTOR_PIN = 15; // D4 on ESP32
+constexpr uint WATER_TEMPERATURE_PIN = 15; // D4 on ESP32
+constexpr uint OIL_TEMPERATURE_PIN = 15;   // D4 on ESP32
 
-#define REFERENCE_RESISTANCE 4800 // 10k + (10k || 10k thermistor)
-#define NOMINAL_RESISTANCE 10000
-#define NOMINAL_TEMPERATURE 25
-#define B_VALUE 3950
-#define ESP32_ANALOG_RESOLUTION 4095
-#define ESP32_ADC_VREF_MV 3300
+constexpr uint REFERENCE_RESISTANCE = 4800; // 10k + (10k || 10k thermistor)
+constexpr uint NOMINAL_RESISTANCE = 10000;
+constexpr uint NOMINAL_TEMPERATURE = 25;
+constexpr uint B_VALUE = 3950;
+constexpr uint ESP32_ANALOG_RESOLUTION = 4095;
+constexpr uint ESP32_ADC_VREF_MV = 3300;
 
-Thermistor *thermistor;
+Thermistor *waterTemperature;
+Thermistor *oilTemperature;
 void setup()
 {
   Serial.begin(115200);
   delay(2000);
-  thermistor = new NTC_Thermistor_ESP32(
-      THERMISTOR_PIN,
+  waterTemperature = new NTC_Thermistor_ESP32(
+      WATER_TEMPERATURE_PIN,
       REFERENCE_RESISTANCE,
       NOMINAL_RESISTANCE,
       NOMINAL_TEMPERATURE,
       B_VALUE,
       ESP32_ADC_VREF_MV,
       ESP32_ANALOG_RESOLUTION);
-  // ESP32PWM::allocateTimer(0);
-  // ESP32PWM::allocateTimer(1);
-  // ESP32PWM::allocateTimer(2);
-  // ESP32PWM::allocateTimer(3);
+  oilTemperature = new NTC_Thermistor_ESP32(
+      OIL_TEMPERATURE_PIN,
+      REFERENCE_RESISTANCE,
+      NOMINAL_RESISTANCE,
+      NOMINAL_TEMPERATURE,
+      B_VALUE,
+      ESP32_ADC_VREF_MV,
+      ESP32_ANALOG_RESOLUTION);
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
   // once serial is available
   aht.begin();
   // // set up mqtt
@@ -116,7 +124,7 @@ void setup()
   // }
   // r1.enable();
 
-  // setup wtr and oil Pressure
+  // setup wtr and oil Pressure with their calibrations
   waterPressure = new PressureTransducer(GPIO_NUM_35, WTR_CAL);
   oilPressure = new PressureTransducer(GPIO_NUM_34, OIL_CAL);
 }
@@ -131,23 +139,12 @@ void setup()
 
 // TODO work in subscriber for MQTT for enabling and disabling relay lines
 // TODO work in some options, potentially for tuning scenarios or something idk
+bool state;
 void loop()
 {
-  const double celsius = thermistor->readCelsius();
-  const double kelvin = thermistor->readKelvin();
-  const double fahrenheit = thermistor->readFahrenheit();
-
-  // Output of information
-  Serial.print("Temperature: ");
-  Serial.print(celsius);
-  Serial.print(" C, ");
-  Serial.print(kelvin);
-  Serial.print(" K, ");
-  Serial.print(fahrenheit);
-  Serial.println(" F");
   delay(1000);
+
   // Serial.printf("Water Pressure: %f | Oil Pressure: %f \n", waterPressure.getReading(), oilPressure.getReading());
-  // Serial.printf("pWater: %f | pOIL: %f \n", waterPressure->getReading(), oilPressure->getReading());
   // delay(500);
   // for (int posDegrees = 0; posDegrees <= 270; posDegrees++)
   // {
@@ -314,20 +311,6 @@ void callback(const char *topic, const byte *message, const unsigned int length)
 
   // If a message is received on the topic esp32/output, you check if the message is either "on" or "off".
   // Changes the output state according to the message
-  if (String(topic) == "esp32/output")
-  {
-    Serial.print("Changing output to ");
-    if (messageTemp == "on")
-    {
-      Serial.println("on");
-      digitalWrite(ledPin, HIGH);
-    }
-    else if (messageTemp == "off")
-    {
-      Serial.println("off");
-      digitalWrite(ledPin, LOW);
-    }
-  }
 }
 void reconnect()
 {
