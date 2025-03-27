@@ -258,8 +258,8 @@ void loop()
   thermocouples["tc4"] = Thermocouple4.readCelsius();
 
   // get ambient air stuff
-  sensors_event_t humidity, temp;
-  aht.getEvent(&humidity, &temp);
+  // sensors_event_t humidity, temp;
+  // aht.getEvent(&humidity, &temp);
 
   // template for aht20
   // JsonObject ambient = doc.createNestedObject("Ambient");
