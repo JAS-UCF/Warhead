@@ -50,7 +50,7 @@ PressureTransducer *waterPressure;
 PressureTransducer *oilPressure;
 
 // sensors
-Adafruit_AHTX0 aht;
+// Adafruit_AHTX0 aht;
 HX711 scale;
 // servo
 Servo fuelServo;
@@ -78,6 +78,10 @@ void setup()
 {
   Serial.begin(115200);
   delay(2000);
+  r1.disable();
+  r2.disable();
+  r3.disable();
+
   waterTemperature = new NTC_Thermistor_ESP32(
       WATER_TEMPERATURE_PIN,
       REFERENCE_RESISTANCE,
@@ -94,27 +98,17 @@ void setup()
       B_VALUE,
       ESP32_ADC_VREF_MV,
       ESP32_ANALOG_RESOLUTION);
-  ESP32PWM::allocateTimer(0);
-  ESP32PWM::allocateTimer(1);
-  ESP32PWM::allocateTimer(2);
-  ESP32PWM::allocateTimer(3);
+  // ESP32PWM::allocateTimer(0);
+  // ESP32PWM::allocateTimer(1);
+  // ESP32PWM::allocateTimer(2);
+  // ESP32PWM::allocateTimer(3);
   // once serial is available
-  aht.begin();
+  // aht.begin();
   // // set up mqtt
-  // setup_wifi();
-  // client.setServer(mqtt_server, 1883);
-  // client.setCallback(callback);
-  // long calibrationSum = 0;
-  // for (int i = 0; i < 10; i++)
-  // {
-  //   delay(250);
-  //   Serial.printf("Taking Reading %d/10\n",i);
-  //   calibrationSum += scale.read_average(2);
-  // }
   // scaleCalibration = calibrationSum / 10;
 
   // EXAMPLE SERVO DRIVE
-  fuelServo.attach(SERVO_PIN);
+  // fuelServo.attach(SERVO_PIN);
   // while (true)
   // {
   //   delay(3000);
@@ -124,9 +118,23 @@ void setup()
   // }
   // r1.enable();
 
+  // init scale for this run
+  scale.begin(SDA, SCL);
   // setup wtr and oil Pressure with their calibrations
   waterPressure = new PressureTransducer(GPIO_NUM_35, WTR_CAL);
   oilPressure = new PressureTransducer(GPIO_NUM_34, OIL_CAL);
+
+  // initialize wifi systems
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+  long calibrationSum = 0;
+  for (int i = 0; i < 10; i++)
+  {
+    delay(250);
+    Serial.printf("Taking Reading %d/10\n", i);
+    calibrationSum += scale.read_average(2);
+  }
 }
 // TODO build out the arduinoJSON messages to send
 // TODO experiment with connecting to wifi, and see whats up
@@ -143,7 +151,7 @@ bool state;
 void loop()
 {
   // r3.enable();
-  // Serial.println("ENABLE");
+  // Serial.println("Wake");
   // delay(1000);
   // r3.disable();
   // Serial.println("DISABLE");
@@ -170,17 +178,17 @@ void loop()
 
   // // Force pin reset - set to INPUT with pullups disabled
   // pinMode(SDA, INPUT);
-  // digitalWrite(SDA, LOW);  // Disable internal pullup
+  // digitalWrite(SDA, LOW); // Disable internal pullup
   // pinMode(SCL, INPUT);
-  // digitalWrite(SCL, LOW);  // Disable internal pullup
-  // delay(50);  // Give pins time to stabilize
+  // digitalWrite(SCL, LOW); // Disable internal pullup
+  // delay(50);              // Give pins time to stabilize
 
-  // // Configure for HX711 with explicit pin mode changes
-  // pinMode(SDA, INPUT);     // Data pin for HX711
-  // pinMode(SCL, OUTPUT);    // Clock pin for HX711
+  // // // Configure for HX711 with explicit pin mode changes
+  // pinMode(SDA, INPUT);  // Data pin for HX711
+  // pinMode(SCL, OUTPUT); // Clock pin for HX711
   // delay(50);
 
-  // // Initialize the HX711 with the repurposed pins
+  // // // Initialize the HX711 with the repurposed pins
   // scale.begin(SDA, SCL);
 
   // // Add both a timeout and a retry mechanism
@@ -243,37 +251,37 @@ void loop()
   // doc["sensor4"] = sensor4_value;
   // */
   // get thermocouple data
-  // JsonObject thermocouples = doc.createNestedObject("Thermocouples");
-  // thermocouples["tc1"] = Thermocouple1.readCelsius();
-  // thermocouples["tc2"] = Thermocouple2.readCelsius();
-  // thermocouples["tc3"] = Thermocouple3.readCelsius();
-  // thermocouples["tc4"] = Thermocouple4.readCelsius();
+  JsonObject thermocouples = doc.createNestedObject("Thermocouples");
+  thermocouples["tc1"] = Thermocouple1.readCelsius();
+  thermocouples["tc2"] = Thermocouple2.readCelsius();
+  thermocouples["tc3"] = Thermocouple3.readCelsius();
+  thermocouples["tc4"] = Thermocouple4.readCelsius();
 
   // get ambient air stuff
-  // sensors_event_t humidity, temp;
-  // aht.getEvent(&humidity, &temp);
+  sensors_event_t humidity, temp;
+  aht.getEvent(&humidity, &temp);
 
   // template for aht20
   // JsonObject ambient = doc.createNestedObject("Ambient");
   // ambient["temp"] = temp.temperature;
   // ambient["humd"] = humidity.relative_humidity;
 
-  // // template for water stats
-  //   JsonObject water = doc.createNestedObject("Water");
-  //   // Convert analog readings to appropriate units (adjust conversion as needed)
-  //   water["pressure"] = analogReadToWaterPressure(analogRead(waterPressurePin));
-  //   water["temperatureC"] = analogReadToWaterTemp(analogRead(waterTempPin));
-  // // emplate for oil stats
-  //   JsonObject oil = doc.createNestedObject("Oil");
-  //   oil["pressure"] = analogReadToOilPressure(analogRead(oilPressurePin));
-  //   oil["temperature"] = analogReadToOilTemp(analogRead(oilTempPin));
+  // template for water stats
+  JsonObject water = doc.createNestedObject("Water");
+  // Convert analog readings to appropriate units (adjust conversion as needed)
+  water["pressure"] = waterPressure->getReading();
+  water["temperatureC"] = waterTemperature->readCelsius();
+  // emplate for oil stats
+  JsonObject oil = doc.createNestedObject("Oil");
+  oil["pressure"] = oilPressure->getReading();
+  oil["temperature"] = oilTemperature->readCelsius();
 
   // template for force stats
-  // doc["force"] = analogReadToForce(analogRead(forceRegulationPin));
+  doc["force"] = scale.read_average(4);
 
-  // String mqtt_message_temp;
-  // serializeJson(doc, mqtt_message_temp);
-  // client.publish("esp32/sensor_data", mqtt_message_temp.c_str());
+  String mqtt_message_temp;
+  serializeJson(doc, mqtt_message_temp);
+  client.publish("esp32/sensor_data", mqtt_message_temp.c_str());
 }
 
 void setup_wifi()
@@ -313,6 +321,18 @@ void callback(const char *topic, const byte *message, const unsigned int length)
   Serial.println();
 
   // Feel free to add more if statements to control more GPIOs with MQTT
+  if (!strcmp((char *)message, "R1"))
+  {
+    r1.flipState();
+  }
+  else if (!strcmp((char *)message, "R2"))
+  {
+    r1.flipState();
+  }
+  else if (!strcmp((char *)message, "R3"))
+  {
+    r1.flipState();
+  }
 
   // If a message is received on the topic esp32/output, you check if the message is either "on" or "off".
   // Changes the output state according to the message
