@@ -34,10 +34,10 @@ PubSubClient client(espClient);
 Essentially, if we want to read from several different spi devices (MAX6675) we need to bridge miso mosi, vin & gnd, the only thing we do that is new and different, is that we need a dedicated pin for CS (Chip select) we can set this to any pin, but need to set it high whenever we want to read from that device
 */
 // first things first, we need to add thr 4 thermocouples, and get them working
-MAX6675 Thermocouple1(GPIO_NUM_14, GPIO_NUM_27, GPIO_NUM_12);
-MAX6675 Thermocouple2(GPIO_NUM_14, GPIO_NUM_26, GPIO_NUM_12);
-MAX6675 Thermocouple3(GPIO_NUM_14, GPIO_NUM_25, GPIO_NUM_12);
-MAX6675 Thermocouple4(GPIO_NUM_14, GPIO_NUM_32, GPIO_NUM_12);
+MAX6675 Thermocouple1(GPIO_NUM_14, 27, GPIO_NUM_12);
+MAX6675 Thermocouple2(GPIO_NUM_14, 26, GPIO_NUM_12);
+MAX6675 Thermocouple3(GPIO_NUM_14, 25, GPIO_NUM_12);
+MAX6675 Thermocouple4(GPIO_NUM_14, 32, GPIO_NUM_12);
 
 // add the 3 relay drives0p
 // these pins will be updated in rev2
@@ -62,8 +62,8 @@ sensor_data_t sens_data;
 long scaleCalibration = 0;
 
 // Pin definitions
-constexpr uint WATER_TEMPERATURE_PIN = 15; // D4 on ESP32
-constexpr uint OIL_TEMPERATURE_PIN = 15;   // D4 on ESP32
+// constexpr uint WATER_TEMPERATURE_PIN = 15; // D15 on ESP32
+// constexpr uint OIL_TEMPERATURE_PIN = 4; // D4 on ESP32
 
 constexpr uint REFERENCE_RESISTANCE = 4800; // 10k + (10k || 10k thermistor)
 constexpr uint NOMINAL_RESISTANCE = 10000;
@@ -72,8 +72,8 @@ constexpr uint B_VALUE = 3950;
 constexpr uint ESP32_ANALOG_RESOLUTION = 4095;
 constexpr uint ESP32_ADC_VREF_MV = 3300;
 
-Thermistor *waterTemperature;
-Thermistor *oilTemperature;
+// Thermistor *waterTemperature;
+// Thermistor *oilTemperature;
 void setup()
 {
   Serial.begin(115200);
@@ -81,23 +81,24 @@ void setup()
   r1.disable();
   r2.disable();
   r3.disable();
+  pinMode(2, OUTPUT);
 
-  waterTemperature = new NTC_Thermistor_ESP32(
-      WATER_TEMPERATURE_PIN,
-      REFERENCE_RESISTANCE,
-      NOMINAL_RESISTANCE,
-      NOMINAL_TEMPERATURE,
-      B_VALUE,
-      ESP32_ADC_VREF_MV,
-      ESP32_ANALOG_RESOLUTION);
-  oilTemperature = new NTC_Thermistor_ESP32(
-      OIL_TEMPERATURE_PIN,
-      REFERENCE_RESISTANCE,
-      NOMINAL_RESISTANCE,
-      NOMINAL_TEMPERATURE,
-      B_VALUE,
-      ESP32_ADC_VREF_MV,
-      ESP32_ANALOG_RESOLUTION);
+  // waterTemperature = new NTC_Thermistor_ESP32(
+  //     WATER_TEMPERATURE_PIN,
+  //     REFERENCE_RESISTANCE,
+  //     NOMINAL_RESISTANCE,
+  //     NOMINAL_TEMPERATURE,
+  //     B_VALUE,
+  //     ESP32_ADC_VREF_MV,
+  //     ESP32_ANALOG_RESOLUTION);
+  // oilTemperature = new NTC_Thermistor_ESP32(
+  //     OIL_TEMPERATURE_PIN,
+  //     REFERENCE_RESISTANCE,
+  //     NOMINAL_RESISTANCE,
+  //     NOMINAL_TEMPERATURE,
+  //     B_VALUE,
+  //     ESP32_ADC_VREF_MV,
+  //     ESP32_ANALOG_RESOLUTION);
   // ESP32PWM::allocateTimer(0);
   // ESP32PWM::allocateTimer(1);
   // ESP32PWM::allocateTimer(2);
@@ -128,13 +129,16 @@ void setup()
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+
   long calibrationSum = 0;
+
   for (int i = 0; i < 10; i++)
   {
     delay(250);
     Serial.printf("Taking Reading %d/10\n", i);
     calibrationSum += scale.read_average(2);
   }
+  scaleCalibration = calibrationSum / 10;
 }
 // TODO build out the arduinoJSON messages to send
 // TODO experiment with connecting to wifi, and see whats up
@@ -148,8 +152,11 @@ void setup()
 // TODO work in subscriber for MQTT for enabling and disabling relay lines
 // TODO work in some options, potentially for tuning scenarios or something idk
 bool state;
+long messageID = 0;
 void loop()
 {
+  delay(200); // clocking delay to protect SPI
+
   // r3.enable();
   // Serial.println("Wake");
   // delay(1000);
@@ -236,11 +243,11 @@ void loop()
   // Wire.begin();
 
   // // esp32 will read in the sensor data, then publish the data to mqtt
-  // if (!client.connected())
-  // {
-  //   reconnect();
-  // }
-  // client.loop();
+  if (!client.connected())
+  {
+    reconnect();
+  }
+  client.loop();
 
   // // read sensor data here
   // /*
@@ -256,7 +263,6 @@ void loop()
   thermocouples["tc2"] = Thermocouple2.readCelsius();
   thermocouples["tc3"] = Thermocouple3.readCelsius();
   thermocouples["tc4"] = Thermocouple4.readCelsius();
-
   // get ambient air stuff
   // sensors_event_t humidity, temp;
   // aht.getEvent(&humidity, &temp);
@@ -266,22 +272,28 @@ void loop()
   // ambient["temp"] = temp.temperature;
   // ambient["humd"] = humidity.relative_humidity;
 
+  JsonObject relays = doc.createNestedObject("Relays");
+  relays["r1"] = r1.getState();
+  relays["r2"] = r2.getState();
+  relays["r3"] = r3.getState();
+
   // template for water stats
   JsonObject water = doc.createNestedObject("Water");
   // Convert analog readings to appropriate units (adjust conversion as needed)
   water["pressure"] = waterPressure->getReading();
-  water["temperatureC"] = waterTemperature->readCelsius();
+  // water["temperatureC"] = waterTemperature->readCelsius();
   // emplate for oil stats
   JsonObject oil = doc.createNestedObject("Oil");
   oil["pressure"] = oilPressure->getReading();
-  oil["temperature"] = oilTemperature->readCelsius();
+  // oil["temperature"] = oilTemperature->readCelsius();
 
   // template for force stats
-  doc["force"] = scale.read_average(4);
+  doc["force"] = scale.read_average(1) - scaleCalibration;
 
   String mqtt_message_temp;
   serializeJson(doc, mqtt_message_temp);
-  client.publish("esp32/sensor_data", mqtt_message_temp.c_str());
+  client.publish("/events", mqtt_message_temp.c_str());
+  Serial.printf("Publishing Message: %ld\n", messageID++);
 }
 
 void setup_wifi()
@@ -293,12 +305,18 @@ void setup_wifi()
   Serial.println(ssid);
 
   WiFi.begin(ssid, password);
-
+  long startTime = millis();
+  bool state = false;
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
+    state = !state;         // flip the state
+    digitalWrite(2, state); // flash the BLUE led while we are trying to connect to WIFI
     Serial.print(".");
+    if (startTime + 15000 > millis())
+      WiFi.begin(ssid, password);
   }
+  digitalWrite(2, HIGH); // hold the LED high while we are connected to the internet
 
   Serial.println("");
   Serial.println("WiFi connected");
@@ -321,21 +339,25 @@ void callback(const char *topic, const byte *message, const unsigned int length)
   Serial.println();
 
   // Feel free to add more if statements to control more GPIOs with MQTT
-  if (!strcmp((char *)message, "R1"))
+  if (!strcmp(topic, "/RELAY"))
   {
-    r1.flipState();
+    Serial.println("GOOD TOPIC");
+    if (messageTemp == "R1")
+    {
+      Serial.println("Update state for Relay1");
+      r1.flipState();
+    }
+    else if (messageTemp == "R2")
+    {
+      Serial.println("Update state for Relay2");
+      r2.flipState();
+    }
+    else if (messageTemp == "R3")
+    {
+      Serial.println("Update state for Relay3");
+      r3.flipState();
+    }
   }
-  else if (!strcmp((char *)message, "R2"))
-  {
-    r1.flipState();
-  }
-  else if (!strcmp((char *)message, "R3"))
-  {
-    r1.flipState();
-  }
-
-  // If a message is received on the topic esp32/output, you check if the message is either "on" or "off".
-  // Changes the output state according to the message
 }
 void reconnect()
 {
@@ -348,7 +370,8 @@ void reconnect()
     {
       Serial.println("connected");
       // Subscribe
-      client.subscribe("esp32/output");
+      // client.subscribe("esp32/output");
+      client.subscribe("/RELAY");
     }
     else
     {

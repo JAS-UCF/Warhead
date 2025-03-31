@@ -30,7 +30,7 @@ public:
   void disable()
   {
     digitalWrite(pin, LOW);
-    state = true;
+    state = false;
   }
   /**
    * @brief Get the State object
@@ -38,7 +38,7 @@ public:
    * @return true
    * @return false
    */
-  bool getState()
+  bool getState() const
   {
     return state;
   }
@@ -48,8 +48,8 @@ public:
    */
   void flipState()
   {
-    digitalWrite(pin, state ? LOW : HIGH);
-    state ? state = false : state = true;
+    state = !state;
+    digitalWrite(pin, state);
   }
   /**
    * @brief Write a defined state for the relay drive, true on, false off
@@ -58,10 +58,10 @@ public:
    * @return true if new state is true
    * @return false if new state is false
    */
-  bool write(bool state)
+  bool write(bool newState)
   {
-    this->state = state;
-    digitalWrite(pin, state);
+    this->state = newState;
+    digitalWrite(pin, newState);
     return this->state;
   }
   ~RelayDrive()
